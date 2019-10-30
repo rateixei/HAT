@@ -5,6 +5,7 @@ from keras.layers import Input, Dense, Lambda, Activation
 from keras.models import Model
 from keras.optimizers import SGD, Adam
 from keras.callbacks import EarlyStopping, ModelCheckpoint
+import numpy as np
 
 class hat_model:
 
@@ -185,11 +186,13 @@ class hat_model:
             adv_weight = wtrain[ytrain==0]
 
         for r in rounds:
-
+            print(r)
             #Fit discriminant
-            print(self.discriminant.trainable)
             self.discriminant.trainable = True
             self.adversarial.trainable = False
+            self.comb_model.compile( 'adam', loss=['binary_crossentropy', 
+                                                'mean_squared_error'], # if c=0, then no adversarial
+                                loss_weights=[1, -Lambda] )
 
             indices = np.random.permutation(len(xtrain))[:batch_size]
             
@@ -198,17 +201,20 @@ class hat_model:
             else:
                 comb_train = (wtrain[indices], wtrain[indices])
                 comb_train = list(comb_train)
-            self.comb_model.train_on_batch(xtrain[indices], [ytrain[indices], ztrain[indices]],
+            met_loss = self.comb_model.train_on_batch(xtrain[indices], [ytrain[indices], ztrain[indices]],
                                             sample_weight=comb_train)
+            print(met_loss)
 
             # Fit adversarial
             
             self.discriminant.trainable = False
             self.adversarial.trainable = True
+            self.adversarial_2.compile('adam', loss=['mean_squared_error'], loss_weights=[Lambda] )
             history = self.adversarial_2.fit(
                         xtrain[ytrain==0], ztrain[ytrain==0],
                         sample_weight = adv_weight,
-                        epochs=eps, batch_size=batch_size)
+                        epochs=1, batch_size=batch_size)
 
         print ('Saving discriminant weights to {}...'.format(self.save_loc + '/' + self.model_name + '_discriminant_adversarial_lambda_{}.h5'.format(Lambda)))
-        model.save_weights(self.save_loc + '/' + self.model_name + '_discriminant_adversarial_lambda_{}.h5'.format(Lambda))
+        self.discriminant.save_weights(self.save_loc + '/' + self.model_name + '_discriminant_adversarial_lambda_{}.h5'.format(Lambda))
+        self.adversarial.save_weights(self.save_loc + '/' + self.model_name + '_adversarial_adversarial_lambda_{}.h5'.format(Lambda))
